@@ -1,0 +1,2584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --light-sq: #f0d9b5;
+    --dark-sq: #b58863;
+    --highlight: rgba(20, 85, 30, 0.5);
+    --last-move: rgba(155, 199, 0, 0.41);
+    --selected: rgba(20, 85, 30, 0.5);
+    --check: rgba(220, 20, 20, 0.7);
+    --bg: #1a1a2e;
+    --panel-bg: #16213e;
+    --text: #e8dcc8;
+    --accent: #c9a84c;
+    --border: #2a2a4a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Source Code Pro', monospace;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.2rem;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  header p {
+    font-size: 0.8rem;
+    color: #7a7a9a;
+    margin-top: 4px;
+  }
+
+  .game-container {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .board-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .player-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--panel-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .player-info .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: bold;
+  }
+
+  .player-info.bot .avatar { background: #2a2a4a; }
+  .player-info.human .avatar { background: #3a2a1a; }
+
+  .player-info .name { flex: 1; font-size: 0.85rem; font-weight: 600; }
+  .player-info .elo { font-size: 0.75rem; color: #7a7a9a; }
+
+  .thinking-indicator {
+    font-size: 0.7rem;
+    color: var(--accent);
+    display: none;
+  }
+  .thinking-indicator.active { display: inline; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .board-wrapper {
+    position: relative;
+    user-select: none;
+  }
+
+  .coords-row {
+    display: flex;
+    width: 100%;
+  }
+
+  .board-with-files {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ranks {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    height: 480px;
+    padding: 2px 0;
+    margin-right: 4px;
+  }
+
+  .rank-label {
+    font-size: 0.65rem;
+    color: #7a7a9a;
+    width: 12px;
+    text-align: center;
+  }
+
+  .files {
+    display: flex;
+    justify-content: space-around;
+    width: 480px;
+    padding: 2px 0;
+    margin-top: 4px;
+  }
+
+  .file-label {
+    font-size: 0.65rem;
+    color: #7a7a9a;
+    width: 60px;
+    text-align: center;
+  }
+
+  #board {
+    width: 480px;
+    height: 480px;
+    display: grid;
+    grid-template-columns: repeat(8, 60px);
+    grid-template-rows: repeat(8, 60px);
+    border: 2px solid #3a3a5a;
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .square {
+    width: 60px;
+    height: 60px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .square.light { background: var(--light-sq); }
+  .square.dark  { background: var(--dark-sq); }
+  .square.selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--selected);
+    pointer-events: none;
+  }
+  .square.last-move::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--last-move);
+    pointer-events: none;
+  }
+  .square.in-check::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--check);
+    pointer-events: none;
+  }
+  .square.legal-move .dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(20, 85, 30, 0.5);
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .square.legal-capture .dot {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    border: 6px solid rgba(20, 85, 30, 0.5);
+    background: transparent;
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .piece {
+    width: 54px;
+    height: 54px;
+    position: relative;
+    z-index: 1;
+    transition: none;
+    pointer-events: none;
+  }
+
+  /* SVG pieces inline via background */
+  .piece { background-size: contain; background-repeat: no-repeat; background-position: center; }
+
+  /* Right panel */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 220px;
+  }
+
+  .panel-box {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  .panel-box h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    color: var(--accent);
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  #move-history {
+    max-height: 360px;
+    overflow-y: auto;
+    font-size: 0.78rem;
+  }
+
+  #move-history::-webkit-scrollbar { width: 4px; }
+  #move-history::-webkit-scrollbar-track { background: transparent; }
+  #move-history::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+
+  .move-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 1fr;
+    gap: 4px;
+    padding: 3px 4px;
+    border-radius: 4px;
+  }
+  .move-row:hover { background: #1e1e3e; }
+  .move-row .move-num { color: #5a5a7a; }
+  .move-row .move-san { cursor: default; padding: 1px 4px; border-radius: 3px; }
+  .move-row .move-san:hover { background: #2a2a4a; }
+
+  .status-box {
+    text-align: center;
+    font-size: 0.85rem;
+    padding: 10px;
+  }
+
+  #status-msg {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    min-height: 20px;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: #1a1a2e;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 8px;
+    transition: opacity 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    margin-top: 6px;
+  }
+
+  .color-picker {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .color-btn {
+    flex: 1;
+    padding: 6px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: 'Source Code Pro', monospace;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .color-btn.white { background: #e8dcc8; color: #1a1a2e; }
+  .color-btn.black { background: #2a2a4a; color: #e8dcc8; }
+  .color-btn.active { border-color: var(--accent); }
+
+  .promotion-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .promotion-modal.show { display: flex; }
+  .promotion-choices {
+    background: var(--panel-bg);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    gap: 12px;
+  }
+  .promo-piece {
+    width: 64px;
+    height: 64px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    background: #1a1a2e;
+  }
+  .promo-piece:hover { border-color: var(--accent); background: #2a2a4a; }
+  .promo-piece img { width: 52px; height: 52px; }
+
+  .elo-picker {
+    margin-bottom: 12px;
+  }
+
+  .elo-label {
+    display: block;
+    font-size: 0.72rem;
+    color: #7a7a9a;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .elo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  /* ELO slider */
+  .elo-slider-wrap {
+    margin-bottom: 4px;
+  }
+  .elo-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .elo-display {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-weight: 700;
+    min-width: 52px;
+    text-align: right;
+  }
+  .elo-rank-badge {
+    font-size: 0.62rem;
+    color: #7a7a9a;
+    margin-left: 2px;
+  }
+  input[type=range].elo-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #2a2a4a 0%, var(--accent) var(--pct, 19%), #2a2a4a var(--pct, 19%));
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range].elo-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #1a1a2e;
+    box-shadow: 0 0 6px rgba(201,168,76,0.5);
+    cursor: pointer;
+  }
+  input[type=range].elo-slider::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid #1a1a2e;
+    cursor: pointer;
+  }
+  .elo-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.58rem;
+    color: #3a3a5a;
+    margin-top: 3px;
+    padding: 0 2px;
+  }
+
+  .hint-btn {
+    background: #1e3a2e;
+    color: #5dbb7a;
+    border: 1px solid #2a5a3a;
+    margin-bottom: 6px;
+  }
+  .hint-btn:hover { opacity: 0.85; }
+  .hint-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .square.hint-from::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(80, 200, 100, 0.55);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .square.hint-to::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(80, 200, 100, 0.55);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .square.hint-to .hint-arrow {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    z-index: 4;
+    pointer-events: none;
+  }
+    #board { width: 320px; height: 320px; grid-template-columns: repeat(8,40px); grid-template-rows: repeat(8,40px); }
+    .square { width:40px; height:40px; }
+    .piece { width:36px; height:36px; }
+    .ranks { height: 320px; }
+    .files { width: 320px; }
+    .file-label { width: 40px; }
+    .square.legal-capture .dot { width:38px; height:38px; }
+    .right-panel { width: 320px; }
+  }
+
+  /* ── Event Notifications ── */
+  #notif-container {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .notif {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 22px 14px 16px;
+    border-radius: 14px;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+    min-width: 260px;
+    pointer-events: auto;
+    animation: notifIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .notif::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.12;
+    border-radius: 14px;
+  }
+
+  .notif.win    { background: rgba(16, 42, 22, 0.95); border-color: rgba(80,200,100,0.3); }
+  .notif.win::before { background: linear-gradient(135deg, #50c864, transparent); }
+  .notif.lose   { background: rgba(42, 16, 16, 0.95); border-color: rgba(220,80,80,0.3); }
+  .notif.lose::before { background: linear-gradient(135deg, #dc5050, transparent); }
+  .notif.draw   { background: rgba(30, 30, 50, 0.95); border-color: rgba(160,160,220,0.3); }
+  .notif.draw::before { background: linear-gradient(135deg, #8888cc, transparent); }
+  .notif.check  { background: rgba(42, 28, 10, 0.95); border-color: rgba(220,150,50,0.35); }
+  .notif.check::before { background: linear-gradient(135deg, #e08830, transparent); }
+  .notif.stalemate { background: rgba(20, 30, 42, 0.95); border-color: rgba(80,160,220,0.3); }
+  .notif.stalemate::before { background: linear-gradient(135deg, #50a0dc, transparent); }
+  .notif.yourmove { background: rgba(20, 20, 38, 0.92); border-color: rgba(200,168,76,0.25); }
+  .notif.yourmove::before { background: linear-gradient(135deg, #c9a84c, transparent); }
+
+  .notif.out {
+    animation: notifOut 0.35s ease-in forwards;
+  }
+
+  @keyframes notifIn {
+    from { opacity: 0; transform: translateY(-20px) scale(0.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes notifOut {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-14px) scale(0.94); }
+  }
+
+  .notif-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .notif.win    .notif-icon { background: rgba(80,200,100,0.18); }
+  .notif.lose   .notif-icon { background: rgba(220,80,80,0.18); }
+  .notif.draw   .notif-icon { background: rgba(140,140,200,0.18); }
+  .notif.check  .notif-icon { background: rgba(220,150,50,0.18); }
+  .notif.stalemate .notif-icon { background: rgba(80,160,220,0.18); }
+  .notif.yourmove .notif-icon { background: rgba(200,168,76,0.15); }
+
+  .notif-icon svg { width: 26px; height: 26px; }
+
+  .notif-text {
+    position: relative;
+    z-index: 1;
+  }
+  .notif-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 2px;
+  }
+  .notif-sub {
+    font-size: 0.72rem;
+    opacity: 0.65;
+    font-family: 'Source Code Pro', monospace;
+  }
+
+  .notif.win    .notif-title { color: #7ddc8a; }
+  .notif.lose   .notif-title { color: #e07070; }
+  .notif.draw   .notif-title { color: #a0a0e0; }
+  .notif.check  .notif-title { color: #e0a040; }
+  .notif.stalemate .notif-title { color: #60b0e8; }
+  .notif.yourmove .notif-title { color: #c9a84c; }
+
+  .notif-close {
+    position: absolute;
+    top: 8px; right: 10px;
+    background: none; border: none;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.9rem;
+    cursor: pointer;
+    pointer-events: auto;
+    line-height: 1;
+    z-index: 2;
+  }
+  .notif-close:hover { color: rgba(255,255,255,0.7); }
+
+  /* shimmer bar at bottom of notif */
+  .notif-bar {
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 3px;
+    border-radius: 0 0 14px 14px;
+    animation: barShrink linear forwards;
+  }
+  .notif.win    .notif-bar { background: #50c864; }
+  .notif.lose   .notif-bar { background: #dc5050; }
+  .notif.draw   .notif-bar { background: #8888cc; }
+  .notif.check  .notif-bar { background: #e08830; }
+  .notif.stalemate .notif-bar { background: #50a0dc; }
+  .notif.yourmove .notif-bar { background: #c9a84c; }
+
+  @keyframes barShrink {
+    from { width: 100%; }
+    to   { width: 0%; }
+  }
+
+
+
+  /* ── Analysis Panel ── */
+  #analysis-panel {
+    display: none;
+    width: 100%;
+    max-width: 800px;
+    margin-top: 32px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  #analysis-panel.show { display: block; animation: fadeUp 0.5s ease forwards; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .analysis-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.2);
+  }
+  .analysis-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    color: var(--accent);
+  }
+  .analysis-close-btn {
+    background: none; border: none;
+    color: #5a5a7a; font-size: 1.2rem;
+    cursor: pointer; transition: color 0.2s;
+    padding: 4px 8px;
+  }
+  .analysis-close-btn:hover { color: var(--text); }
+
+  .analysis-summary {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .summary-col {
+    flex: 1;
+    min-width: 100px;
+    padding: 14px 16px;
+    border-right: 1px solid var(--border);
+    text-align: center;
+  }
+  .summary-col:last-child { border-right: none; }
+  .s-label {
+    font-size: 0.65rem;
+    color: #5a5a7a;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+  .s-value {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.45rem;
+    font-weight: 700;
+  }
+  .s-sub { font-size: 0.68rem; color: #7a7a9a; margin-top: 2px; }
+  .col-excellent { color: #5dbb7a; }
+  .col-good      { color: #81c8f0; }
+  .col-inaccuracy{ color: #e0c060; }
+  .col-mistake   { color: #e09040; }
+  .col-blunder   { color: #dc5555; }
+  .col-neutral   { color: var(--text); }
+
+  .accuracy-section {
+    padding: 14px 24px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .accuracy-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: #7a7a9a;
+    margin-bottom: 6px;
+  }
+  .acc-bar-track {
+    height: 8px;
+    background: #1a1a2e;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .acc-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #dc5555 0%, #e09040 30%, #e0c060 55%, #81c8f0 75%, #5dbb7a 100%);
+    transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+    width: 0%;
+  }
+  .accuracy-verdict {
+    font-size: 0.78rem;
+    text-align: center;
+    padding: 8px 0 10px;
+    color: #9a9aba;
+  }
+
+  .analysis-moves-section { padding: 0 24px 8px; }
+  .analysis-moves-section h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 0.95rem;
+    color: var(--accent);
+    padding: 14px 0 10px;
+  }
+  .analysis-moves-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .analysis-moves-list::-webkit-scrollbar { width: 4px; }
+  .analysis-moves-list::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+
+  .amr {
+    display: grid;
+    grid-template-columns: 26px 1fr 1fr;
+    gap: 2px 8px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    align-items: start;
+    transition: background 0.15s;
+  }
+  .amr:hover { background: rgba(255,255,255,0.04); }
+  .amr-num { color: #4a4a6a; font-size: 0.72rem; padding-top: 3px; }
+  .amr-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .amr-cell.white-move { }
+  .amr-cell.black-move { }
+  .amr-top {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .amr-badge {
+    font-size: 0.58rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-best       { background: rgba(61,171,90,0.25);  color: #3dab5a; }
+  .badge-excellent  { background: rgba(93,187,122,0.2);  color: #5dbb7a; }
+  .badge-good       { background: rgba(129,200,240,0.2); color: #81c8f0; }
+  .badge-inaccuracy { background: rgba(224,192,96,0.2);  color: #e0c060; }
+  .badge-mistake    { background: rgba(224,144,64,0.2);  color: #e09040; }
+  .badge-blunder    { background: rgba(220,85,85,0.25);  color: #dc5555; }
+
+  .amr-comment {
+    font-size: 0.7rem;
+    color: #7a7a9a;
+    line-height: 1.45;
+    padding-top: 1px;
+  }
+  .amr-comment em { color: #9a9aba; font-style: normal; }
+
+  .analysis-insights {
+    padding: 16px 24px 24px;
+    border-top: 1px solid var(--border);
+  }
+  .analysis-insights h3 {
+    font-family: 'Playfair Display', serif;
+    color: var(--accent);
+    font-size: 0.95rem;
+    margin-bottom: 12px;
+  }
+  .insight-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .insight-card {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    flex: 1;
+    min-width: 155px;
+  }
+  .ic-title {
+    font-size: 0.65rem;
+    color: #5a5a7a;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+  .ic-body {
+    font-size: 0.78rem;
+    color: var(--text);
+    line-height: 1.55;
+  }
+  .ic-body strong { color: var(--accent); }
+
+  /* ── Captured Pieces ── */
+  .captured-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 20px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+  .captured-row img {
+    width: 20px;
+    height: 20px;
+    opacity: 0.85;
+  }
+  .material-adv {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-left: 2px;
+  }
+
+  /* ── Style Picker ── */
+  .style-picker { margin-bottom: 12px; }
+  .style-label {
+    display: block;
+    font-size: 0.72rem;
+    color: #7a7a9a;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .style-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .style-btn {
+    background: #1a1a2e;
+    color: #9a9aba;
+    border: 1px solid #2a2a4a;
+    border-radius: 7px;
+    padding: 7px 6px;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .style-btn:hover { border-color: var(--accent); color: var(--text); }
+  .style-btn.active { background: rgba(201,168,76,0.15); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .style-btn .style-icon { display: block; font-size: 1rem; margin-bottom: 2px; }
+  .style-btn .style-name { display: block; font-weight: 600; }
+  /* ── Opening Banner ── */
+  #opening-banner {
+    width: 100%;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(201,168,76,0.07);
+    border: 1px solid rgba(201,168,76,0.18);
+    border-radius: 7px;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    pointer-events: none;
+  }
+  #opening-banner.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  #opening-banner.fading {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  .ob-eco {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    background: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .ob-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 0.85rem;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ob-variation {
+    font-size: 0.7rem;
+    color: #9a8a5a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+
+<!-- Notification container -->
+<div id="notif-container"></div>
+
+<header>
+  <h1>♟ Chess</h1>
+  <p id="header-sub">Play against an 800 ELO bot</p>
+</header>
+
+<div class="game-container">
+  <div class="board-area">
+    <!-- Bot player (top) -->
+    <div class="player-info bot">
+      <div class="avatar">🤖</div>
+      <div>
+        <div class="name" id="bot-name-label">ChessBot</div>
+        <div class="elo" id="bot-elo-label">800 ELO</div>
+      </div>
+      <div class="captured-row" id="captured-by-bot"></div>
+      <span class="thinking-indicator" id="thinking">thinking...</span>
+    </div>
+
+    <!-- Board -->
+    <div style="display:flex; align-items:flex-start;">
+      <div class="ranks" id="rank-labels"></div>
+      <div class="board-with-files">
+        <!-- Opening banner sits above board -->
+        <div id="opening-banner">
+          <span class="ob-eco" id="ob-eco"></span>
+          <span class="ob-name" id="ob-name"></span>
+          <span class="ob-variation" id="ob-variation"></span>
+        </div>
+        <div id="board"></div>
+        <div class="files" id="file-labels"></div>
+      </div>
+    </div>
+
+    <!-- Human player (bottom) -->
+    <div class="player-info human">
+      <div class="avatar">👤</div>
+      <div>
+        <div class="name">You</div>
+        <div class="elo" id="your-color-label">White</div>
+      </div>
+      <div class="captured-row" id="captured-by-you"></div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+    <div class="panel-box">
+      <h3>New Game</h3>
+      <div class="color-picker">
+        <button class="color-btn white active" id="btn-white" onclick="setColor('white')">White</button>
+        <button class="color-btn black" id="btn-black" onclick="setColor('black')">Black</button>
+      </div>
+      <div class="elo-picker">
+        <label class="elo-label">Bot Strength</label>
+        <div class="elo-slider-wrap">
+          <div class="elo-slider-row">
+            <input type="range" class="elo-slider" id="elo-slider" min="500" max="2000" step="100" value="800" oninput="onEloSlider(this.value)">
+            <span class="elo-display" id="elo-display">800</span>
+          </div>
+          <div class="elo-ticks">
+            <span>500</span><span>750</span><span>1000</span><span>1250</span><span>1500</span><span>1750</span><span>2000</span>
+          </div>
+        </div>
+        <div style="font-size:0.68rem;color:#7a7a9a;margin-top:2px;" id="elo-rank-label">Club Player</div>
+      </div>
+      <div class="style-picker">
+        <label class="style-label">Bot Style</label>
+        <div class="style-buttons" id="style-buttons"></div>
+      </div>
+      <button class="btn" onclick="newGame()">New Game</button>
+    </div>
+
+    <div class="panel-box status-box">
+      <div id="status-msg">Your move</div>
+      <button class="btn hint-btn" id="hint-btn" onclick="showBestMove()">💡 Best Move</button>
+      <button class="btn secondary" id="analyse-btn" onclick="showAnalysis()" style="display:none;margin-top:6px;border-color:#5dbb7a;color:#5dbb7a;">📊 Analyse Game</button>
+      <button class="btn secondary" onclick="undoMove()">← Undo</button>
+    </div>
+
+    <div class="panel-box">
+      <h3>Move History</h3>
+      <div id="move-history"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Promotion modal -->
+<div class="promotion-modal" id="promo-modal">
+  <div class="promotion-choices" id="promo-choices"></div>
+</div>
+
+<!-- Analysis Panel -->
+<div id="analysis-panel">
+  <div class="analysis-header">
+    <h2>📊 Game Analysis</h2>
+    <button class="analysis-close-btn" onclick="closeAnalysis()">✕</button>
+  </div>
+  <div class="analysis-summary" id="analysis-summary"></div>
+  <div class="accuracy-section">
+    <div class="accuracy-labels">
+      <span id="acc-label-you">Your Accuracy</span>
+      <span id="acc-pct-you" style="color:var(--accent)">—</span>
+    </div>
+    <div class="acc-bar-track"><div class="acc-bar-fill" id="acc-bar-you"></div></div>
+    <div class="accuracy-labels" style="margin-top:10px">
+      <span id="acc-label-bot">Bot Accuracy</span>
+      <span id="acc-pct-bot" style="color:#9a9aba">—</span>
+    </div>
+    <div class="acc-bar-track"><div class="acc-bar-fill" id="acc-bar-bot"></div></div>
+    <div class="accuracy-verdict" id="acc-verdict"></div>
+  </div>
+  <div class="analysis-moves-section">
+    <h3>Move by Move</h3>
+    <div class="analysis-moves-list" id="analysis-moves-list"></div>
+  </div>
+  <div class="analysis-insights">
+    <h3>Key Insights</h3>
+    <div class="insight-cards" id="insight-cards"></div>
+  </div>
+</div>
+
+<!-- Chess.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<script>
+// ── Inline SVG chess pieces (cburnett style, fully self-contained) ─────────────
+const PIECES_SVG = {
+  // WHITE KING
+  wK: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22.5 11.63V6" stroke-linejoin="miter"/>
+      <path d="M20 8h5" stroke-linejoin="miter"/>
+      <path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#fff" stroke-linecap="butt" stroke-linejoin="miter"/>
+      <path d="M12.5 37c5.5 3.5 14.5 3.5 20 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V17s-5.5-5-11-2.5c-5.5 2-4.5 9.5 0 12V37z" fill="#fff"/>
+      <path d="M12.5 30c5.5-3 14.5-3 20 0" fill="none"/>
+      <path d="M12.5 33.5c5.5-3 14.5-3 20 0" fill="none"/>
+      <path d="M12.5 37c5.5-3 14.5-3 20 0" fill="none"/>
+    </g>
+  </svg>`,
+
+  // WHITE QUEEN
+  wQ: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 9,26 C 17.5,24.5 30,24.5 36,26 L 38.5,13.5 L 31,25 L 30.7,10.9 L 24.5,24.5 L 22.5,10 L 20.5,24.5 L 14.3,10.9 L 14,25 L 6.5,13.5 Z" stroke-linecap="butt"/>
+      <path d="M 9,26 C 9,28 10.5,28 11.5,30 C 12.5,31.5 12.5,31 12,33.5 C 10.5,34.5 11,36 11,36 C 9.5,37.5 11,38.5 11,38.5 C 17.5,39.5 27.5,39.5 34,38.5 C 34,38.5 35.5,37.5 34,36 C 34,36 34.5,34.5 33,33.5 C 32.5,31 32.5,31.5 33.5,30 C 34.5,28 36,28 36,26 C 27.5,24.5 17.5,24.5 9,26 Z"/>
+      <path d="M 11.5,30 C 15,29 30,29 33.5,30" fill="none"/>
+      <path d="M 12,33.5 C 15,32.5 30,32.5 33,33.5" fill="none"/>
+      <circle cx="6" cy="12" r="2" stroke="none" fill="#000"/>
+      <circle cx="14" cy="9" r="2" stroke="none" fill="#000"/>
+      <circle cx="22.5" cy="8" r="2" stroke="none" fill="#000"/>
+      <circle cx="31" cy="9" r="2" stroke="none" fill="#000"/>
+      <circle cx="39" cy="12" r="2" stroke="none" fill="#000"/>
+      <circle cx="6" cy="12" r="1.5" fill="#fff" stroke="none"/>
+      <circle cx="14" cy="9" r="1.5" fill="#fff" stroke="none"/>
+      <circle cx="22.5" cy="8" r="1.5" fill="#fff" stroke="none"/>
+      <circle cx="31" cy="9" r="1.5" fill="#fff" stroke="none"/>
+      <circle cx="39" cy="12" r="1.5" fill="#fff" stroke="none"/>
+    </g>
+  </svg>`,
+
+  // WHITE ROOK
+  wR: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="#fff" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 39h27v-3H9zM12 36v-4h21v4zM11 14V9h4v2h5V9h5v2h5V9h4v5" stroke-linecap="butt"/>
+      <path d="M34 14l-3 3H14l-3-3"/>
+      <path d="M31 17v12.5H14V17" stroke-linecap="butt" stroke-linejoin="miter"/>
+      <path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/>
+      <path d="M11 14h23" fill="none" stroke-linejoin="miter"/>
+    </g>
+  </svg>`,
+
+  // WHITE BISHOP
+  wB: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <g fill="#fff" stroke-linecap="butt">
+        <path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/>
+        <path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/>
+        <path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+      </g>
+      <path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke-linejoin="miter"/>
+    </g>
+  </svg>`,
+
+  // WHITE KNIGHT
+  wN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 22,10 C 32.5,11 38.5,18 38,29 L 15,29 C 15,20 25,16.5 23,10 Z" fill="#fff" stroke-linecap="butt"/>
+      <path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" fill="#fff" stroke-linecap="butt"/>
+      <path d="M 9.5,25.5 A 0.5,0.5 0 1,1 8.5,25.5 A 0.5,0.5 0 1,1 9.5,25.5 Z" fill="#000" stroke="#000" stroke-width="1.5"/>
+      <path d="M 15,15.5 A 0.5,1.5 0 1,1 14,15.5 A 0.5,1.5 0 1,1 15,15.5 Z" fill="#000" stroke="#000" stroke-width="1.5" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)"/>
+      <path d="M 24.55,10.4 L 24.1,11.85 L 24.6,12 C 27.75,13 29.96,14.7 31.11,17.7 L 31.5,18.7 L 33,18.2 L 32.61,17.2 C 31.29,13.42 28.54,11.34 24.85,10.5 Z" fill="#000" stroke="none"/>
+      <path d="M 9 39 L 36 39 L 36 36 L 9 36 Z" fill="#fff" stroke-linecap="butt"/>
+    </g>
+  </svg>`,
+
+  // WHITE PAWN
+  wP: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g stroke="#000" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="22.5" cy="10" r="4" fill="#fff"/>
+      <path d="M22.5 14c-4 0-7 2.5-7 6 0 2 1 3.5 2.5 4.5C14.5 26 13 28.5 13 31H32c0-2.5-1.5-5-5-6.5C28.5 23.5 29.5 22 29.5 20c0-3.5-3-6-7-6z" fill="#fff"/>
+      <path d="M11.5 37h22" fill="none"/>
+      <path d="M11.5 34.5c3.5-1.5 18.5-1.5 22 0" fill="none"/>
+      <path d="M13 37v-3.5c0 0 3.5-2 9.5-2s9.5 2 9.5 2V37" fill="#fff" stroke-linejoin="round"/>
+    </g>
+  </svg>`,
+
+  // BLACK KING
+  bK: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22.5 11.63V6" stroke-linejoin="miter"/>
+      <path d="M20 8h5" stroke-linejoin="miter"/>
+      <path d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5" fill="#000" stroke-linecap="butt" stroke-linejoin="miter"/>
+      <path d="M12.5 37c5.5 3.5 14.5 3.5 20 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V17s-5.5-5-11-2.5c-5.5 2-4.5 9.5 0 12V37z" fill="#000"/>
+      <path d="M12.5 30c5.5-3 14.5-3 20 0" fill="none" stroke="#fff"/>
+      <path d="M12.5 33.5c5.5-3 14.5-3 20 0" fill="none" stroke="#fff"/>
+      <path d="M12.5 37c5.5-3 14.5-3 20 0" fill="none" stroke="#fff"/>
+    </g>
+  </svg>`,
+
+  // BLACK QUEEN
+  bQ: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 9,26 C 17.5,24.5 30,24.5 36,26 L 38.5,13.5 L 31,25 L 30.7,10.9 L 24.5,24.5 L 22.5,10 L 20.5,24.5 L 14.3,10.9 L 14,25 L 6.5,13.5 Z" fill="#000" stroke-linecap="butt"/>
+      <path d="M 9,26 C 9,28 10.5,28 11.5,30 C 12.5,31.5 12.5,31 12,33.5 C 10.5,34.5 11,36 11,36 C 9.5,37.5 11,38.5 11,38.5 C 17.5,39.5 27.5,39.5 34,38.5 C 34,38.5 35.5,37.5 34,36 C 34,36 34.5,34.5 33,33.5 C 32.5,31 32.5,31.5 33.5,30 C 34.5,28 36,28 36,26 C 27.5,24.5 17.5,24.5 9,26 Z" fill="#000"/>
+      <path d="M 11.5,30 C 15,29 30,29 33.5,30" fill="none" stroke="#fff"/>
+      <path d="M 12,33.5 C 15,32.5 30,32.5 33,33.5" fill="none" stroke="#fff"/>
+      <circle cx="6" cy="12" r="2" fill="#000" stroke="#000"/>
+      <circle cx="14" cy="9" r="2" fill="#000" stroke="#000"/>
+      <circle cx="22.5" cy="8" r="2" fill="#000" stroke="#000"/>
+      <circle cx="31" cy="9" r="2" fill="#000" stroke="#000"/>
+      <circle cx="39" cy="12" r="2" fill="#000" stroke="#000"/>
+    </g>
+  </svg>`,
+
+  // BLACK ROOK
+  bR: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="#000" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 39h27v-3H9zM12.5 32l1.5-2.5h17l1.5 2.5zM12 36v-4h21v4zM11 14V9h4v2h5V9h5v2h5V9h4v5" stroke-linecap="butt"/>
+      <path d="M34 14l-3 3H14l-3-3"/>
+      <path d="M31 17v12.5H14V17" stroke-linecap="butt" stroke-linejoin="miter"/>
+      <path d="M11 14h23" fill="none" stroke-linejoin="miter"/>
+    </g>
+  </svg>`,
+
+  // BLACK BISHOP
+  bB: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <g fill="#000" stroke-linecap="butt">
+        <path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.354.49-2.323.47-3-.5 1.354-1.94 3-2 3-2z"/>
+        <path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/>
+        <path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"/>
+      </g>
+      <path d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" stroke="#fff" stroke-linejoin="miter"/>
+    </g>
+  </svg>`,
+
+  // BLACK KNIGHT
+  bN: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 22,10 C 32.5,11 38.5,18 38,29 L 15,29 C 15,20 25,16.5 23,10 Z" fill="#000" stroke-linecap="butt"/>
+      <path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" fill="#000" stroke-linecap="butt"/>
+      <path d="M 9.5,25.5 A 0.5,0.5 0 1,1 8.5,25.5 A 0.5,0.5 0 1,1 9.5,25.5 Z" fill="#fff" stroke="#fff" stroke-width="1.5"/>
+      <path d="M 15,15.5 A 0.5,1.5 0 1,1 14,15.5 A 0.5,1.5 0 1,1 15,15.5 Z" fill="#fff" stroke="#fff" stroke-width="1.5" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)"/>
+      <path d="M 24.55,10.4 L 24.1,11.85 L 24.6,12 C 27.75,13 29.96,14.7 31.11,17.7 L 31.5,18.7 L 33,18.2 L 32.61,17.2 C 31.29,13.42 28.54,11.34 24.85,10.5 Z" fill="#fff" stroke="none"/>
+      <path d="M 9 39 L 36 39 L 36 36 L 9 36 Z" fill="#000" stroke-linecap="butt"/>
+    </g>
+  </svg>`,
+
+  // BLACK PAWN
+  bP: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">
+    <g stroke="#000" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="22.5" cy="10" r="4" fill="#000"/>
+      <path d="M22.5 14c-4 0-7 2.5-7 6 0 2 1 3.5 2.5 4.5C14.5 26 13 28.5 13 31H32c0-2.5-1.5-5-5-6.5C28.5 23.5 29.5 22 29.5 20c0-3.5-3-6-7-6z" fill="#000"/>
+      <path d="M13 37v-3.5c0 0 3.5-2 9.5-2s9.5 2 9.5 2V37" fill="#000" stroke-linejoin="round"/>
+    </g>
+  </svg>`
+};
+
+function pieceImg(color, type) {
+  const key = color + type.toUpperCase();
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(PIECES_SVG[key] || '');
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let chess = new Chess();
+let selectedSq = null;
+let legalMoves = [];
+let humanColor = 'w';
+let gameOver = false;
+let lastMove = null;
+let pendingPromotion = null;
+let moveHistoryData = [];
+let botElo = 800;
+let hintMove = null;
+let botStyle = 'normal'; // 'normal' | 'aggressive' | 'passive' | 'positional'
+
+// ── Board rendering ───────────────────────────────────────────────────────────
+function squareToCoords(sq) {
+  const file = sq.charCodeAt(0) - 97; // a=0..h=7
+  const rank = parseInt(sq[1]) - 1;   // 1=0..8=7
+  return { file, rank };
+}
+
+function coordsToSquare(file, rank) {
+  return String.fromCharCode(97 + file) + (rank + 1);
+}
+
+function isFlipped() { return humanColor === 'b'; }
+
+function renderLabels() {
+  const rankEl = document.getElementById('rank-labels');
+  const fileEl = document.getElementById('file-labels');
+  rankEl.innerHTML = '';
+  fileEl.innerHTML = '';
+  const files = ['a','b','c','d','e','f','g','h'];
+  const ranks = ['8','7','6','5','4','3','2','1'];
+  if (isFlipped()) {
+    ranks.reverse();
+    files.reverse();
+  }
+  ranks.forEach(r => {
+    const d = document.createElement('div');
+    d.className = 'rank-label';
+    d.textContent = r;
+    rankEl.appendChild(d);
+  });
+  files.forEach(f => {
+    const d = document.createElement('div');
+    d.className = 'file-label';
+    d.textContent = f;
+    fileEl.appendChild(d);
+  });
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  // Find king in check
+  let checkSq = null;
+  if (chess.in_check()) {
+    const turn = chess.turn();
+    const pieces = chess.board();
+    outer: for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const p = pieces[r][f];
+        if (p && p.type === 'k' && p.color === turn) {
+          checkSq = coordsToSquare(f, 7 - r);
+          break outer;
+        }
+      }
+    }
+  }
+
+  const legalTargets = new Set(legalMoves.map(m => m.to));
+  const legalCaptures = new Set(legalMoves.filter(m => chess.get(m.to)).map(m => m.to));
+
+  const flipped = isFlipped();
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const displayRow = flipped ? 7 - row : row;
+      const displayCol = flipped ? 7 - col : col;
+      const rank = 7 - displayRow;
+      const file = displayCol;
+      const sq = coordsToSquare(file, rank);
+      const isLight = (file + rank) % 2 !== 0;
+
+      const div = document.createElement('div');
+      div.className = 'square ' + (isLight ? 'light' : 'dark');
+      div.dataset.sq = sq;
+
+      if (sq === selectedSq) div.classList.add('selected');
+      if (lastMove && (sq === lastMove.from || sq === lastMove.to)) div.classList.add('last-move');
+      if (sq === checkSq) div.classList.add('in-check');
+      if (hintMove && sq === hintMove.from) div.classList.add('hint-from');
+      if (hintMove && sq === hintMove.to) { div.classList.add('hint-to'); const arr = document.createElement('div'); arr.className='hint-arrow'; arr.textContent='★'; div.appendChild(arr); }
+
+      // Legal move dots
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      if (legalCaptures.has(sq)) {
+        div.classList.add('legal-capture');
+        div.appendChild(dot);
+      } else if (legalTargets.has(sq)) {
+        div.classList.add('legal-move');
+        div.appendChild(dot);
+      }
+
+      // Piece
+      const piece = chess.get(sq);
+      if (piece) {
+        const img = document.createElement('img');
+        img.className = 'piece';
+        img.src = pieceImg(piece.color, piece.type);
+        img.alt = piece.color + piece.type;
+        div.appendChild(img);
+      }
+
+      div.addEventListener('click', () => onSquareClick(sq));
+      board.appendChild(div);
+    }
+  }
+  renderCaptured();
+}
+
+// ── Click handling ─────────────────────────────────────────────────────────────
+function onSquareClick(sq) {
+  if (gameOver) return;
+  if (chess.turn() !== humanColor) return;
+  hintMove = null; // clear hint on any click
+
+  const piece = chess.get(sq);
+
+  if (selectedSq) {
+    // Try to move
+    const move = legalMoves.find(m => m.to === sq);
+    if (move) {
+      // Check promotion
+      if (move.flags.includes('p')) {
+        pendingPromotion = { from: selectedSq, to: sq };
+        showPromoModal();
+        return;
+      }
+      executeMove(selectedSq, sq);
+      return;
+    }
+    // Reselect own piece
+    if (piece && piece.color === humanColor) {
+      selectSquare(sq);
+      return;
+    }
+    // Deselect
+    selectedSq = null;
+    legalMoves = [];
+    renderBoard();
+    return;
+  }
+
+  if (piece && piece.color === humanColor) {
+    selectSquare(sq);
+  }
+}
+
+function selectSquare(sq) {
+  selectedSq = sq;
+  legalMoves = chess.moves({ square: sq, verbose: true });
+  renderBoard();
+}
+
+function executeMove(from, to, promotion) {
+  const moveObj = { from, to };
+  if (promotion) moveObj.promotion = promotion;
+  const result = chess.move(moveObj);
+  if (!result) return;
+
+  lastMove = { from, to };
+  selectedSq = null;
+  legalMoves = [];
+  moveHistoryData.push(result.san);
+  updateMoveHistory();
+  renderBoard();
+  detectOpening();
+  checkGameOver();
+  if (!gameOver) setTimeout(botMove, 300);
+}
+
+// ── Promotion ─────────────────────────────────────────────────────────────────
+function showPromoModal() {
+  const modal = document.getElementById('promo-modal');
+  const choices = document.getElementById('promo-choices');
+  choices.innerHTML = '';
+  const promos = ['q','r','b','n'];
+  promos.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'promo-piece';
+    const img = document.createElement('img');
+    img.src = pieceImg(humanColor, p);
+    div.appendChild(img);
+    div.onclick = () => {
+      modal.classList.remove('show');
+      executeMove(pendingPromotion.from, pendingPromotion.to, p);
+      pendingPromotion = null;
+    };
+    choices.appendChild(div);
+  });
+  modal.classList.add('show');
+}
+
+// ── Bot (ELO-scaled) ──────────────────────────────────────────────────────────
+function botMove() {
+  if (gameOver) return;
+  document.getElementById('thinking').classList.add('active');
+  setStatus('Bot is thinking...');
+
+  // Delay: lower ELO is faster (less "thought"), higher is slower but capped
+  const { depth } = eloProfile();
+  const baseDelay = 250 + Math.random() * 300;
+  const thinkDelay = depth >= 3 ? baseDelay + 400 : depth >= 2 ? baseDelay + 200 : baseDelay;
+
+  setTimeout(() => {
+    const move = getBotMove();
+    if (move) {
+      const result = chess.move(move);
+      if (result) {
+        lastMove = { from: result.from, to: result.to };
+        moveHistoryData.push(result.san);
+        updateMoveHistory();
+      }
+    }
+    document.getElementById('thinking').classList.remove('active');
+    renderBoard();
+    detectOpening();
+    checkGameOver();
+    if (!gameOver) {
+      setStatus('Your move');
+      showNotif('yourmove', 'Your Turn', 'Bot has moved — make your play', 2000);
+    }
+  }, thinkDelay);
+}
+
+// ELO profile: blunder rate and top-N candidates
+function eloProfile() {
+  // 500 ELO: 65% random blunder, pick from top 5
+  // 600 ELO: 55% random, top 4
+  // 700 ELO: 45% random, top 4
+  // 800 ELO: 35% random, top 3
+  // 900 ELO: 20% random, top 2
+  // 1000 ELO: 8% random, top 1 (nearly best move)
+  const profiles = {
+    500:  { blunder: 0.65, topN: 5 },
+    600:  { blunder: 0.55, topN: 4 },
+    700:  { blunder: 0.45, topN: 4 },
+    800:  { blunder: 0.35, topN: 3 },
+    900:  { blunder: 0.20, topN: 2 },
+    1000: { blunder: 0.08, topN: 1 },
+  };
+  return profiles[botElo] || profiles[800];
+}
+
+function getBotMove() {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+
+  const { blunder, topN } = eloProfile();
+
+  if (Math.random() < blunder) {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  const scored = moves.map(m => ({ move: m, score: scoreMoveBasic(m) }));
+  scored.sort((a, b) => b.score - a.score);
+  const n = Math.min(topN, scored.length);
+  return scored[Math.floor(Math.random() * n)].move;
+}
+
+// ── Bot Engine ────────────────────────────────────────────────────────────────
+
+// Piece values in centipawns
+const PV_BOT = { p:100, n:320, b:330, r:500, q:900, k:20000 };
+
+// Piece-square tables (white's perspective; flip rank for black)
+const PST_BOT = {
+  p:[  0,  0,  0,  0,  0,  0,  0,  0,
+      50, 50, 50, 50, 50, 50, 50, 50,
+      10, 10, 20, 30, 30, 20, 10, 10,
+       5,  5, 10, 27, 27, 10,  5,  5,
+       0,  0,  0, 25, 25,  0,  0,  0,
+       5, -5,-10,  0,  0,-10, -5,  5,
+       5, 10, 10,-25,-25, 10, 10,  5,
+       0,  0,  0,  0,  0,  0,  0,  0],
+  n:[-50,-40,-30,-30,-30,-30,-40,-50,
+     -40,-20,  0,  0,  0,  0,-20,-40,
+     -30,  0, 10, 15, 15, 10,  0,-30,
+     -30,  5, 15, 20, 20, 15,  5,-30,
+     -30,  0, 15, 20, 20, 15,  0,-30,
+     -30,  5, 10, 15, 15, 10,  5,-30,
+     -40,-20,  0,  5,  5,  0,-20,-40,
+     -50,-40,-30,-30,-30,-30,-40,-50],
+  b:[-20,-10,-10,-10,-10,-10,-10,-20,
+     -10,  0,  0,  0,  0,  0,  0,-10,
+     -10,  0,  5, 10, 10,  5,  0,-10,
+     -10,  5,  5, 10, 10,  5,  5,-10,
+     -10,  0, 10, 10, 10, 10,  0,-10,
+     -10, 10, 10, 10, 10, 10, 10,-10,
+     -10,  5,  0,  0,  0,  0,  5,-10,
+     -20,-10,-10,-10,-10,-10,-10,-20],
+  r:[  0,  0,  0,  0,  0,  0,  0,  0,
+       5, 10, 10, 10, 10, 10, 10,  5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+      -5,  0,  0,  0,  0,  0,  0, -5,
+       0,  0,  0,  5,  5,  0,  0,  0],
+  q:[-20,-10,-10, -5, -5,-10,-10,-20,
+     -10,  0,  0,  0,  0,  0,  0,-10,
+     -10,  0,  5,  5,  5,  5,  0,-10,
+      -5,  0,  5,  5,  5,  5,  0, -5,
+       0,  0,  5,  5,  5,  5,  0, -5,
+     -10,  5,  5,  5,  5,  5,  0,-10,
+     -10,  0,  5,  0,  0,  0,  0,-10,
+     -20,-10,-10, -5, -5,-10,-10,-20],
+  k:[-30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -30,-40,-40,-50,-50,-40,-40,-30,
+     -20,-30,-30,-40,-40,-30,-30,-20,
+     -10,-20,-20,-20,-20,-20,-20,-10,
+      20, 20,  0,  0,  0,  0, 20, 20,
+      20, 30, 10,  0,  0, 10, 30, 20]
+};
+
+function pstScore(type, color, file, rank) {
+  // rank 0 = rank1 (white's back rank), rank 7 = rank8
+  const idx = color === 'w' ? (7 - rank) * 8 + file : rank * 8 + file;
+  return PST_BOT[type] ? PST_BOT[type][idx] : 0;
+}
+
+function evaluateBot(chessInst) {
+  if (chessInst.in_checkmate()) return chessInst.turn() === 'w' ? -99999 : 99999;
+  if (chessInst.in_draw() || chessInst.in_stalemate()) return 0;
+
+  let score = 0;
+  const board = chessInst.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const p = board[r][f];
+      if (!p) continue;
+      const rank = 7 - r; // rank 0 = rank1
+      const val = PV_BOT[p.type] + pstScore(p.type, p.color, f, rank);
+      score += p.color === 'w' ? val : -val;
+    }
+  }
+  // Mobility bonus (rough)
+  const mobilityW = chessInst.turn() === 'w' ? chessInst.moves().length : 0;
+  score += mobilityW * 2;
+  return score;
+}
+
+// Move ordering for better alpha-beta pruning
+function orderMoves(moves) {
+  return moves.slice().sort((a, b) => {
+    let sa = 0, sb = 0;
+    if (a.captured) sa += PV_BOT[a.captured] - PV_BOT[a.piece] * 0.1;
+    if (b.captured) sb += PV_BOT[b.captured] - PV_BOT[b.piece] * 0.1;
+    if (a.flags.includes('p')) sa += 800;
+    if (b.flags.includes('p')) sb += 800;
+    if (a.san.includes('+')) sa += 50;
+    if (b.san.includes('+')) sb += 50;
+    return sb - sa;
+  });
+}
+
+function alphabeta(chessInst, depth, alpha, beta, maximising) {
+  if (depth === 0 || chessInst.game_over()) return evaluateBot(chessInst);
+
+  const moves = orderMoves(chessInst.moves({ verbose: true }));
+
+  if (maximising) {
+    let best = -Infinity;
+    for (const m of moves) {
+      chessInst.move(m);
+      best = Math.max(best, alphabeta(chessInst, depth - 1, alpha, beta, false));
+      chessInst.undo();
+      alpha = Math.max(alpha, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const m of moves) {
+      chessInst.move(m);
+      best = Math.min(best, alphabeta(chessInst, depth - 1, alpha, beta, true));
+      chessInst.undo();
+      beta = Math.min(beta, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+
+// ELO → search depth + error profile
+function eloProfile() {
+  // depth: how many plies of minimax
+  // blunder: chance of a completely random move
+  // noise: gaussian noise added to scores (centipawns) for candidate selection
+  // topN: how many top moves to randomly pick from (after scoring)
+  if (botElo <= 500)  return { depth: 0, blunder: 0.72, noise: 300, topN: 6 };
+  if (botElo <= 600)  return { depth: 0, blunder: 0.60, noise: 250, topN: 5 };
+  if (botElo <= 700)  return { depth: 1, blunder: 0.48, noise: 200, topN: 5 };
+  if (botElo <= 800)  return { depth: 1, blunder: 0.36, noise: 160, topN: 4 };
+  if (botElo <= 900)  return { depth: 1, blunder: 0.26, noise: 120, topN: 3 };
+  if (botElo <= 1000) return { depth: 1, blunder: 0.18, noise:  90, topN: 3 };
+  if (botElo <= 1100) return { depth: 2, blunder: 0.12, noise:  70, topN: 2 };
+  if (botElo <= 1200) return { depth: 2, blunder: 0.08, noise:  55, topN: 2 };
+  if (botElo <= 1300) return { depth: 2, blunder: 0.05, noise:  40, topN: 2 };
+  if (botElo <= 1400) return { depth: 2, blunder: 0.03, noise:  30, topN: 1 };
+  if (botElo <= 1500) return { depth: 3, blunder: 0.02, noise:  22, topN: 1 };
+  if (botElo <= 1600) return { depth: 3, blunder: 0.01, noise:  15, topN: 1 };
+  if (botElo <= 1700) return { depth: 3, blunder: 0.005,noise:  10, topN: 1 };
+  if (botElo <= 1800) return { depth: 4, blunder: 0.002,noise:   6, topN: 1 };
+  if (botElo <= 1900) return { depth: 4, blunder: 0.001,noise:   3, topN: 1 };
+  return               { depth: 4, blunder: 0,    noise:   0, topN: 1 }; // 2000
+}
+
+function getBotMove() {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+
+  const { depth, blunder, noise, topN } = eloProfile();
+  const botColor = humanColor === 'w' ? 'b' : 'w';
+  const maximising = botColor === 'w';
+
+  // Full random blunder
+  if (Math.random() < blunder) {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  // Score every move with minimax at the chosen depth
+  const scored = orderMoves(moves).map(m => {
+    chess.move(m);
+    const s = alphabeta(chess, depth - 1, -Infinity, Infinity, !maximising);
+    chess.undo();
+    // Apply style bias on top of engine score
+    const bias = styleScoreBias(m, botColor);
+    // Add noise proportional to ELO weakness
+    const jitter = noise > 0 ? (Math.random() - 0.5) * 2 * noise : 0;
+    return { move: m, score: (maximising ? s : -s) + bias + jitter };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const n = Math.min(topN, scored.length);
+  return scored[Math.floor(Math.random() * n)].move;
+}
+
+// Style bias applied on top of engine score
+function styleScoreBias(move, botColor) {
+  let bias = 0;
+  switch (botStyle) {
+    case 'aggressive':
+      if (move.captured) bias += PV_BOT[move.captured] * 0.15;
+      if (move.san.includes('+')) bias += 40;
+      if (botColor === 'w' && parseInt(move.to[1]) >= 5) bias += 10;
+      if (botColor === 'b' && parseInt(move.to[1]) <= 4) bias += 10;
+      { const fr = parseInt(move.from[1]), tr = parseInt(move.to[1]);
+        if (botColor === 'w' && tr < fr) bias -= 15;
+        if (botColor === 'b' && tr > fr) bias -= 15; }
+      if (move.piece === 'q') bias += 12;
+      break;
+    case 'passive':
+      if (move.captured) {
+        const gain = PV_BOT[move.captured] - PV_BOT[move.piece];
+        if (gain < 0) bias -= 60;
+      }
+      if (move.san.includes('+')) bias -= 8;
+      if (move.piece === 'p') bias += 10;
+      if (move.flags.includes('k') || move.flags.includes('q')) bias += 25;
+      break;
+    case 'positional':
+      { const to = move.to;
+        if (['d4','d5','e4','e5'].includes(to)) bias += 30;
+        else if (['c3','c4','c5','c6','d3','d6','e3','e6','f3','f4','f5','f6'].includes(to)) bias += 15;
+        if (['a','h'].includes(to[0])) bias -= 20; }
+      if (chess.history().length < 16 && (move.piece === 'n' || move.piece === 'b')) bias += 20;
+      if (move.flags.includes('k') || move.flags.includes('q')) bias += 40;
+      break;
+  }
+  return bias;
+}
+
+// Legacy alias used by analysis engine
+const PIECE_VALUES = { p:1, n:3, b:3.2, r:5, q:9, k:0 };
+const CENTER_SQ   = new Set(['d4','d5','e4','e5']);
+const EXTENDED_SQ = new Set(['c3','c4','c5','c6','d3','d6','e3','e6','f3','f4','f5','f6']);
+const EDGE_SQ     = new Set(['a1','a2','a3','a4','a5','a6','a7','a8','h1','h2','h3','h4','h5','h6','h7','h8','b1','b8','g1','g8']);
+
+function scoreMoveBasic(move) {
+  // Used only by analysis engine (hint + game analysis), not the bot
+  let score = 0;
+  if (move.captured) score += PIECE_VALUES[move.captured] * 10;
+  if (move.flags.includes('p')) score += 80;
+  if (move.san.includes('#')) score += 1000;
+  else if (move.san.includes('+')) score += 5;
+  if (CENTER_SQ.has(move.to)) score += 3;
+  else if (EXTENDED_SQ.has(move.to)) score += 1;
+  if (move.piece === 'k' && !move.flags.includes('k') && !move.flags.includes('q')) score -= 4;
+  if (move.flags.includes('k') || move.flags.includes('q')) score += 6;
+  return score;
+}
+
+// ── Captured Pieces Display ───────────────────────────────────────────────────
+const PIECE_ORDER = ['q','r','b','n','p']; // display order
+
+function getCapturedPieces() {
+  // Reconstruct from history which pieces have been taken
+  const start = { w: {p:8,n:2,b:2,r:2,q:1,k:1}, b: {p:8,n:2,b:2,r:2,q:1,k:1} };
+  const current = { w: {p:0,n:0,b:0,r:0,q:0,k:0}, b: {p:0,n:0,b:0,r:0,q:0,k:0} };
+
+  chess.board().forEach(row => row.forEach(sq => {
+    if (sq) current[sq.color][sq.type]++;
+  }));
+
+  const capturedByW = {}; // white captured black pieces
+  const capturedByB = {}; // black captured white pieces
+
+  PIECE_ORDER.forEach(t => {
+    capturedByW[t] = Math.max(0, start.b[t] - current.b[t]);
+    capturedByB[t] = Math.max(0, start.w[t] - current.w[t]);
+  });
+
+  return { capturedByW, capturedByB };
+}
+
+function getMaterialAdvantage(capturedByW, capturedByB) {
+  const val = { p:1, n:3, b:3, r:5, q:9, k:0 };
+  let wScore = 0, bScore = 0;
+  PIECE_ORDER.forEach(t => {
+    wScore += (capturedByW[t] || 0) * val[t];
+    bScore += (capturedByB[t] || 0) * val[t];
+  });
+  return wScore - bScore; // positive = white ahead
+}
+
+function renderCaptured() {
+  const { capturedByW, capturedByB } = getCapturedPieces();
+  const adv = getMaterialAdvantage(capturedByW, capturedByB);
+
+  // botColor captures humanColor's pieces, humanColor captures botColor's pieces
+  const botColor = humanColor === 'w' ? 'b' : 'w';
+
+  // What bot captured = human pieces taken (capturedByW if bot is white, else capturedByB)
+  const botCaptured  = botColor === 'w' ? capturedByW : capturedByB;
+  // What human captured = bot pieces taken
+  const youCaptured  = humanColor === 'w' ? capturedByW : capturedByB;
+
+  // Material advantage sign from human's perspective
+  const humanAdv = humanColor === 'w' ? adv : -adv;
+
+  function buildRow(captured, advValue, elId) {
+    const el = document.getElementById(elId);
+    el.innerHTML = '';
+    PIECE_ORDER.forEach(t => {
+      for (let i = 0; i < (captured[t] || 0); i++) {
+        const img = document.createElement('img');
+        // Show the color that was CAPTURED (opposite of capturer)
+        const capturedColor = elId === 'captured-by-bot' ? humanColor : botColor;
+        img.src = pieceImg(capturedColor, t);
+        el.appendChild(img);
+      }
+    });
+    if (advValue > 0) {
+      const span = document.createElement('span');
+      span.className = 'material-adv';
+      span.textContent = '+' + advValue;
+      el.appendChild(span);
+    }
+  }
+
+  buildRow(botCaptured,  humanAdv < 0 ? -humanAdv : 0, 'captured-by-bot');
+  buildRow(youCaptured,  humanAdv > 0 ? humanAdv  : 0, 'captured-by-you');
+}
+
+// ── Best Move Hint ────────────────────────────────────────────────────────────
+function showBestMove() {
+  if (gameOver || chess.turn() !== humanColor) return;
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return;
+
+  // Use a deeper minimax-style score: score our move + penalise best bot reply
+  const scored = moves.map(m => {
+    const baseScore = scoreMoveBasic(m);
+    // Simulate the move and score the opponent's best response
+    chess.move(m);
+    const replies = chess.moves({ verbose: true });
+    let opponentBest = 0;
+    if (replies.length) {
+      opponentBest = Math.max(...replies.map(r => scoreMoveBasic(r)));
+    }
+    chess.undo();
+    return { move: m, score: baseScore - opponentBest * 0.5 };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  hintMove = { from: scored[0].move.from, to: scored[0].move.to };
+  renderBoard();
+
+  // Auto-clear hint after 3 seconds
+  setTimeout(() => { hintMove = null; renderBoard(); }, 3000);
+}
+
+// ── Notification System ────────────────────────────────────────────────────────
+const NOTIF_ICONS = {
+  win: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 21h8M12 17v4M5 3h14l-2 8a5 5 0 0 1-10 0L5 3z" stroke="#7ddc8a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M5 3H3M19 3h2" stroke="#7ddc8a" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="12" cy="10" r="2" fill="#7ddc8a" opacity="0.6"/>
+  </svg>`,
+
+  lose: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z" stroke="#e07070" stroke-width="1.8"/>
+    <path d="M15 9l-6 6M9 9l6 6" stroke="#e07070" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
+
+  draw: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18 18H6M18 12H6M18 6H6" stroke="#a0a0e0" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="20" cy="6" r="2" fill="#a0a0e0" opacity="0.5"/>
+    <circle cx="20" cy="12" r="2" fill="#a0a0e0" opacity="0.5"/>
+    <circle cx="20" cy="18" r="2" fill="#a0a0e0" opacity="0.5"/>
+    <circle cx="4" cy="6" r="2" fill="#a0a0e0" opacity="0.5"/>
+    <circle cx="4" cy="12" r="2" fill="#a0a0e0" opacity="0.5"/>
+    <circle cx="4" cy="18" r="2" fill="#a0a0e0" opacity="0.5"/>
+  </svg>`,
+
+  check: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z" stroke="#e0a040" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M12 8v4M12 15h.01" stroke="#e0a040" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
+
+  stalemate: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M9 3h6M12 3v3M7 21h10l-1-5H8L7 21z" stroke="#60b0e8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10 6c0 0-3 2-3 5.5S9 16 12 16s5-1 5-4.5S14 6 14 6" stroke="#60b0e8" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M12 12v-2" stroke="#60b0e8" stroke-width="2" stroke-linecap="round"/>
+    <line x1="8" y1="21" x2="16" y2="21" stroke="#60b0e8" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
+
+  yourmove: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5 12h14M13 6l6 6-6 6" stroke="#c9a84c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
+  botmove: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="8" width="12" height="10" rx="2" stroke="#9a9aba" stroke-width="1.8"/>
+    <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="#9a9aba" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="9.5" cy="13" r="1.2" fill="#9a9aba"/>
+    <circle cx="14.5" cy="13" r="1.2" fill="#9a9aba"/>
+    <path d="M3 13h2M19 13h2" stroke="#9a9aba" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
+};
+
+let notifTimers = {};
+
+function showNotif(type, title, sub, duration = 3500) {
+  const container = document.getElementById('notif-container');
+
+  // Remove existing notif of same type instantly
+  const existing = container.querySelector(`.notif[data-type="${type}"]`);
+  if (existing) { clearTimeout(notifTimers[type]); existing.remove(); }
+
+  const el = document.createElement('div');
+  el.className = `notif ${type}`;
+  el.dataset.type = type;
+  el.innerHTML = `
+    <div class="notif-icon">${NOTIF_ICONS[type] || ''}</div>
+    <div class="notif-text">
+      <div class="notif-title">${title}</div>
+      ${sub ? `<div class="notif-sub">${sub}</div>` : ''}
+    </div>
+    <button class="notif-close" onclick="dismissNotif('${type}')">✕</button>
+    <div class="notif-bar" style="animation-duration:${duration}ms"></div>
+  `;
+  container.appendChild(el);
+
+  notifTimers[type] = setTimeout(() => dismissNotif(type), duration);
+}
+
+function dismissNotif(type) {
+  const container = document.getElementById('notif-container');
+  const el = container.querySelector(`.notif[data-type="${type}"]`);
+  if (!el) return;
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 350);
+  clearTimeout(notifTimers[type]);
+}
+
+function clearAllNotifs() {
+  document.getElementById('notif-container').innerHTML = '';
+  Object.keys(notifTimers).forEach(k => clearTimeout(notifTimers[k]));
+}
+
+// ── Game status ────────────────────────────────────────────────────────────────
+function checkGameOver() {
+  if (chess.in_checkmate()) {
+    if (chess.turn() === humanColor) {
+      setStatus('💀 You lost!');
+      showNotif('lose', 'Checkmate!', 'Better luck next time', 0);
+    } else {
+      setStatus('🎉 You won!');
+      showNotif('win', 'You Win!', 'Excellent play — checkmate!', 0);
+    }
+    gameOver = true;
+    showAnalyseButton();
+  } else if (chess.in_stalemate()) {
+    setStatus('Stalemate – Draw');
+    showNotif('stalemate', 'Stalemate!', 'No legal moves — it\'s a draw', 0);
+    gameOver = true;
+    showAnalyseButton();
+  } else if (chess.in_draw()) {
+    setStatus('½ Draw');
+    showNotif('draw', 'Draw!', 'The game is a draw', 0);
+    gameOver = true;
+    showAnalyseButton();
+  } else if (chess.in_check()) {
+    if (chess.turn() === humanColor) {
+      setStatus('⚠️ You are in check!');
+      showNotif('check', 'Check!', 'Your king is under attack', 2500);
+    } else {
+      setStatus('Check on bot!');
+      showNotif('check', 'Check!', 'You put the bot in check', 2000);
+    }
+  }
+}
+
+function showAnalyseButton() {
+  setTimeout(() => {
+    document.getElementById('analyse-btn').style.display = 'block';
+  }, 800);
+}
+
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg;
+}
+
+// ── Move history ───────────────────────────────────────────────────────────────
+function updateMoveHistory() {
+  const el = document.getElementById('move-history');
+  el.innerHTML = '';
+  for (let i = 0; i < moveHistoryData.length; i += 2) {
+    const row = document.createElement('div');
+    row.className = 'move-row';
+    const num = document.createElement('span');
+    num.className = 'move-num';
+    num.textContent = (i/2 + 1) + '.';
+    const w = document.createElement('span');
+    w.className = 'move-san';
+    w.textContent = moveHistoryData[i] || '';
+    const b = document.createElement('span');
+    b.className = 'move-san';
+    b.textContent = moveHistoryData[i+1] || '';
+    row.appendChild(num);
+    row.appendChild(w);
+    row.appendChild(b);
+    el.appendChild(row);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────────
+function setStyle(style) {
+  botStyle = style;
+  document.querySelectorAll('.style-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.style === style);
+  });
+  // Update bot name display
+  const names = { normal:'ChessBot', aggressive:'Attacker', passive:'Defender', positional:'Strategist' };
+  document.getElementById('bot-name-label').textContent = names[style] || 'ChessBot';
+}
+
+function buildStyleButtons() {
+  const container = document.getElementById('style-buttons');
+  const styles = [
+    { id:'normal',      icon:'⚖️',  name:'Normal',      desc:'Balanced play' },
+    { id:'aggressive',  icon:'⚔️',  name:'Aggressive',  desc:'Attacks & captures' },
+    { id:'passive',     icon:'🛡️',  name:'Passive',     desc:'Avoids trades' },
+    { id:'positional',  icon:'♟',   name:'Positional',  desc:'Centre & structure' },
+  ];
+  styles.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'style-btn' + (s.id === 'normal' ? ' active' : '');
+    b.dataset.style = s.id;
+    b.innerHTML = `<span class="style-icon">${s.icon}</span><span class="style-name">${s.name}</span><span class="style-desc">${s.desc}</span>`;
+    b.onclick = () => setStyle(s.id);
+    container.appendChild(b);
+  });
+}
+
+const ELO_RANKS = [
+  [500,  'Absolute Beginner'],
+  [700,  'Beginner'],
+  [900,  'Casual Player'],
+  [1100, 'Club Player'],
+  [1300, 'Intermediate'],
+  [1500, 'Advanced'],
+  [1700, 'Expert'],
+  [1900, 'Master Level'],
+  [2000, 'Grandmaster Level'],
+];
+
+function eloRankLabel(elo) {
+  for (let i = ELO_RANKS.length - 1; i >= 0; i--) {
+    if (elo >= ELO_RANKS[i][0]) return ELO_RANKS[i][1];
+  }
+  return 'Beginner';
+}
+
+function onEloSlider(val) {
+  botElo = parseInt(val);
+  const pct = ((botElo - 500) / 1500 * 100).toFixed(1);
+  const slider = document.getElementById('elo-slider');
+  slider.style.setProperty('--pct', pct + '%');
+  document.getElementById('elo-display').textContent = botElo;
+  document.getElementById('elo-rank-label').textContent = eloRankLabel(botElo);
+  document.getElementById('bot-elo-label').textContent = botElo + ' ELO';
+  document.getElementById('header-sub').textContent = 'Play against a ' + botElo + ' ELO bot';
+}
+
+function buildEloButtons() {
+  // Initialise slider appearance
+  onEloSlider(800);
+  document.getElementById('elo-slider').value = 800;
+}
+
+function setColor(color) {
+  humanColor = color === 'white' ? 'w' : 'b';
+  document.getElementById('btn-white').classList.toggle('active', color === 'white');
+  document.getElementById('btn-black').classList.toggle('active', color === 'black');
+  document.getElementById('your-color-label').textContent = color.charAt(0).toUpperCase() + color.slice(1);
+}
+
+function newGame() {
+  chess = new Chess();
+  selectedSq = null;
+  legalMoves = [];
+  gameOver = false;
+  lastMove = null;
+  pendingPromotion = null;
+  moveHistoryData = [];
+  hintMove = null;
+  clearAllNotifs();
+  closeAnalysis();
+  hideOpeningBanner();
+  lastOpeningKey = null;
+  document.getElementById('analyse-btn').style.display = 'none';
+  document.getElementById('captured-by-bot').innerHTML = '';
+  document.getElementById('captured-by-you').innerHTML = '';
+  updateMoveHistory();
+  renderLabels();
+  renderBoard();
+  setStatus('Your move');
+  document.getElementById('thinking').classList.remove('active');
+
+  // If player chose black, bot goes first
+  if (humanColor === 'b') {
+    setTimeout(botMove, 500);
+  }
+}
+
+function undoMove() {
+  if (gameOver) { gameOver = false; }
+  hintMove = null;
+  clearAllNotifs();
+  // Undo two half-moves (bot + human)
+  chess.undo();
+  chess.undo();
+  if (moveHistoryData.length >= 2) moveHistoryData.splice(-2, 2);
+  else if (moveHistoryData.length === 1) moveHistoryData.splice(-1, 1);
+  selectedSq = null;
+  legalMoves = [];
+  const history = chess.history({ verbose: true });
+  lastMove = history.length ? { from: history[history.length-1].from, to: history[history.length-1].to } : null;
+  updateMoveHistory();
+  renderBoard();
+  detectOpening();
+  setStatus('Your move');
+}
+
+// ── Game Analysis Engine ──────────────────────────────────────────────────────
+
+// Full position evaluator (centipawns, positive = white advantage)
+function evaluatePosition(chessInstance) {
+  if (chessInstance.in_checkmate()) return chessInstance.turn() === 'w' ? -9999 : 9999;
+  if (chessInstance.in_draw() || chessInstance.in_stalemate()) return 0;
+
+  const PV = { p:100, n:320, b:330, r:500, q:900, k:0 };
+  // Piece-square tables (simplified)
+  const PST = {
+    p: [0,0,0,0,0,0,0,0,50,50,50,50,50,50,50,50,10,10,20,30,30,20,10,10,5,5,10,25,25,10,5,5,0,0,0,20,20,0,0,0,5,-5,-10,0,0,-10,-5,5,5,10,10,-20,-20,10,10,5,0,0,0,0,0,0,0,0],
+    n: [-50,-40,-30,-30,-30,-30,-40,-50,-40,-20,0,0,0,0,-20,-40,-30,0,10,15,15,10,0,-30,-30,5,15,20,20,15,5,-30,-30,0,15,20,20,15,0,-30,-30,5,10,15,15,10,5,-30,-40,-20,0,5,5,0,-20,-40,-50,-40,-30,-30,-30,-30,-40,-50],
+    b: [-20,-10,-10,-10,-10,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,10,10,5,0,-10,-10,5,5,10,10,5,5,-10,-10,0,10,10,10,10,0,-10,-10,10,10,10,10,10,10,-10,-10,5,0,0,0,0,5,-10,-20,-10,-10,-10,-10,-10,-10,-20],
+    r: [0,0,0,0,0,0,0,0,5,10,10,10,10,10,10,5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,-5,0,0,0,0,0,0,-5,0,0,0,5,5,0,0,0],
+    q: [-20,-10,-10,-5,-5,-10,-10,-20,-10,0,0,0,0,0,0,-10,-10,0,5,5,5,5,0,-10,-5,0,5,5,5,5,0,-5,0,0,5,5,5,5,0,-5,-10,5,5,5,5,5,0,-10,-10,0,5,0,0,0,0,-10,-20,-10,-10,-5,-5,-10,-10,-20],
+    k: [-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30,-20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10,20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20]
+  };
+
+  let score = 0;
+  const board = chessInstance.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const p = board[r][f];
+      if (!p) continue;
+      const idx = p.color === 'w' ? r*8+f : (7-r)*8+f;
+      const val = PV[p.type] + (PST[p.type] ? PST[p.type][idx] : 0);
+      score += p.color === 'w' ? val : -val;
+    }
+  }
+  return score;
+}
+
+// 1-ply best move score from a position
+function bestScore(chessInstance, forColor) {
+  const moves = chessInstance.moves({ verbose: true });
+  if (!moves.length) return forColor === 'w' ? -9999 : 9999;
+  let best = forColor === 'w' ? -99999 : 99999;
+  for (const m of moves) {
+    chessInstance.move(m);
+    const s = evaluatePosition(chessInstance);
+    chessInstance.undo();
+    if (forColor === 'w') best = Math.max(best, s);
+    else best = Math.min(best, s);
+  }
+  return best;
+}
+
+function classifyMove(scoreBefore, scoreAfter, color) {
+  // From the moving player's perspective (negate for black)
+  const sign = color === 'w' ? 1 : -1;
+  const delta = sign * (scoreAfter - scoreBefore); // positive = improved for mover
+  // How much did the position change vs the best possible move delta
+  if (delta >= -10)   return 'best';
+  if (delta >= -30)   return 'excellent';
+  if (delta >= -70)   return 'good';
+  if (delta >= -150)  return 'inaccuracy';
+  if (delta >= -300)  return 'mistake';
+  return 'blunder';
+}
+
+const MOVE_COMMENTS = {
+  best: [
+    'Perfect move! This was the strongest option.',
+    'Best move in the position — well calculated.',
+    'Exactly right. No improvement possible here.',
+  ],
+  excellent: [
+    'Very strong move. Almost the best option.',
+    'Excellent choice — only marginally different from optimal.',
+    'Sharp and accurate play.',
+  ],
+  good: [
+    'Solid move. A reasonable choice here.',
+    'Good move, keeps the position under control.',
+    'Fine play, though better options existed.',
+  ],
+  inaccuracy: [
+    'Slightly inaccurate. A better move was available.',
+    'Not the sharpest — you missed a stronger option.',
+    'A small slip. The position is still playable.',
+  ],
+  mistake: [
+    'A clear mistake. This gave away an advantage.',
+    'This move weakens your position significantly.',
+    'You missed a much stronger continuation here.',
+  ],
+  blunder: [
+    'Blunder! This loses significant material or position.',
+    'A serious error — this turns the game around.',
+    'Critical mistake. The best move was very different.',
+  ],
+};
+
+function getMoveComment(classification, san, bestSan) {
+  const comments = MOVE_COMMENTS[classification];
+  let comment = comments[Math.floor(Math.random() * comments.length)];
+  if (classification === 'mistake' || classification === 'blunder') {
+    if (bestSan) comment += ` Consider <em>${bestSan}</em> instead.`;
+  }
+  return comment;
+}
+
+function analyseMoveList(pgn) {
+  // Replay the full game and analyse each move
+  const replayChess = new Chess();
+  const fullHistory = new Chess();
+  // Load all moves
+  const tempChess = new Chess();
+  // We'll use moveHistoryData (SAN list) to replay
+  const results = [];
+  const allSan = [...moveHistoryData];
+
+  for (let i = 0; i < allSan.length; i++) {
+    const color = i % 2 === 0 ? 'w' : 'b';
+    const scoreBefore = evaluatePosition(replayChess);
+
+    // Find the best move before playing
+    const legalMoves = replayChess.moves({ verbose: true });
+    let bestMoveSan = null;
+    if (legalMoves.length > 0) {
+      const scored = legalMoves.map(m => {
+        replayChess.move(m);
+        const s = evaluatePosition(replayChess);
+        replayChess.undo();
+        return { m, s };
+      });
+      scored.sort((a,b) => color === 'w' ? b.s - a.s : a.s - b.s);
+      bestMoveSan = scored[0].m.san;
+    }
+
+    // Play the actual move
+    const result = replayChess.move(allSan[i]);
+    if (!result) break;
+
+    const scoreAfter = evaluatePosition(replayChess);
+    const classification = classifyMove(scoreBefore, scoreAfter, color);
+    const comment = getMoveComment(classification, result.san, bestMoveSan !== result.san ? bestMoveSan : null);
+
+    results.push({
+      moveNum: Math.floor(i / 2) + 1,
+      color,
+      san: result.san,
+      classification,
+      comment,
+      scoreBefore,
+      scoreAfter,
+      bestSan: bestMoveSan,
+    });
+  }
+  return results;
+}
+
+function calcAccuracy(analysedMoves, color) {
+  const myMoves = analysedMoves.filter(m => m.color === color);
+  if (!myMoves.length) return 0;
+  const weights = { best:100, excellent:90, good:75, inaccuracy:50, mistake:25, blunder:5 };
+  const total = myMoves.reduce((sum, m) => sum + (weights[m.classification] || 0), 0);
+  return Math.round(total / myMoves.length);
+}
+
+function showAnalysis() {
+  if (!moveHistoryData.length) return;
+  const panel = document.getElementById('analysis-panel');
+  panel.classList.add('show');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Run analysis
+  const analysed = analyseMoveList();
+  const yourColor = humanColor;
+  const botColor  = humanColor === 'w' ? 'b' : 'w';
+
+  const yourMoves   = analysed.filter(m => m.color === yourColor);
+  const botMoves    = analysed.filter(m => m.color === botColor);
+  const yourAcc     = calcAccuracy(analysed, yourColor);
+  const botAcc      = calcAccuracy(analysed, botColor);
+
+  const count = (arr, cls) => arr.filter(m => m.classification === cls).length;
+
+  // Summary row
+  const sumEl = document.getElementById('analysis-summary');
+  const cats = [
+    { label: 'Best',       cls: 'best',       col: 'col-excellent' },
+    { label: 'Excellent',  cls: 'excellent',  col: 'col-good' },
+    { label: 'Good',       cls: 'good',       col: 'col-good' },
+    { label: 'Inaccuracy', cls: 'inaccuracy', col: 'col-inaccuracy' },
+    { label: 'Mistake',    cls: 'mistake',    col: 'col-mistake' },
+    { label: 'Blunder',    cls: 'blunder',    col: 'col-blunder' },
+  ];
+  sumEl.innerHTML = cats.map(c => `
+    <div class="summary-col">
+      <div class="s-label">${c.label}</div>
+      <div class="s-value ${c.col}">${count(yourMoves, c.cls)}</div>
+      <div class="s-sub">you · <span style="color:#5a5a7a">${count(botMoves, c.cls)} bot</span></div>
+    </div>
+  `).join('');
+
+  // Accuracy bars — animate after short delay
+  document.getElementById('acc-label-you').textContent = `Your Accuracy (${yourColor === 'w' ? 'White' : 'Black'})`;
+  document.getElementById('acc-pct-you').textContent = yourAcc + '%';
+  document.getElementById('acc-pct-bot').textContent = botAcc + '%';
+  document.getElementById('acc-bar-you').style.width = '0%';
+  document.getElementById('acc-bar-bot').style.width = '0%';
+  setTimeout(() => {
+    document.getElementById('acc-bar-you').style.width = yourAcc + '%';
+    document.getElementById('acc-bar-bot').style.width = botAcc + '%';
+  }, 200);
+
+  const verdicts = [
+    [90, '🏆 Outstanding accuracy! You played like a titled player.'],
+    [75, '✨ Very strong play with only minor slip-ups.'],
+    [60, '👍 Decent game. A few moments to work on.'],
+    [40, '📚 Room to improve — several key mistakes cost you.'],
+    [0,  '⚔️ Rough game, but every game is a chance to learn.'],
+  ];
+  const verdict = verdicts.find(([thresh]) => yourAcc >= thresh);
+  document.getElementById('acc-verdict').textContent = verdict ? verdict[1] : '';
+
+  // Move-by-move list
+  const listEl = document.getElementById('analysis-moves-list');
+  listEl.innerHTML = '';
+
+  // Group into pairs
+  for (let i = 0; i < analysed.length; i += 2) {
+    const wMove = analysed[i];
+    const bMove = analysed[i + 1];
+    const row = document.createElement('div');
+    row.className = 'amr';
+
+    const numEl = document.createElement('div');
+    numEl.className = 'amr-num';
+    numEl.textContent = wMove.moveNum + '.';
+    row.appendChild(numEl);
+
+    [wMove, bMove].forEach((mv, idx) => {
+      if (!mv) { row.appendChild(document.createElement('div')); return; }
+      const cell = document.createElement('div');
+      cell.className = 'amr-cell ' + (idx === 0 ? 'white-move' : 'black-move');
+      const isYours = mv.color === yourColor;
+      cell.innerHTML = `
+        <div class="amr-top">
+          <span style="color:${mv.color==='w'?'#e8dcc8':'#9a9aba'}">${mv.san}</span>
+          <span class="amr-badge badge-${mv.classification}">${mv.classification}</span>
+          ${isYours ? '<span style="font-size:0.6rem;color:#5a5a7a">you</span>' : ''}
+        </div>
+        <div class="amr-comment">${mv.comment}</div>
+      `;
+      row.appendChild(cell);
+    });
+
+    listEl.appendChild(row);
+  }
+
+  // Insights
+  const insights = [];
+
+  // Opening moves insight
+  const earlyBlunders = yourMoves.filter((m,i) => i < 10 && (m.classification === 'blunder' || m.classification === 'mistake'));
+  if (earlyBlunders.length === 0) {
+    insights.push({ title: 'Opening', body: 'You navigated the opening without any major mistakes. Good fundamentals!' });
+  } else {
+    insights.push({ title: 'Opening', body: `You made <strong>${earlyBlunders.length} error${earlyBlunders.length>1?'s':''}</strong> in the first 10 moves. Focus on controlling the centre and developing pieces early.` });
+  }
+
+  // Blunder insight
+  const blunders = yourMoves.filter(m => m.classification === 'blunder');
+  if (blunders.length) {
+    const b = blunders[0];
+    insights.push({ title: 'Critical Moment', body: `Your biggest blunder was <strong>${b.san}</strong> on move ${b.moveNum}. ${b.bestSan ? `Playing <strong>${b.bestSan}</strong> would have been much stronger.` : 'Slow down and recalculate before committing.'}` });
+  } else {
+    insights.push({ title: 'No Blunders!', body: 'You avoided any catastrophic errors. Keep it up — consistency is key.' });
+  }
+
+  // Best moves insight
+  const bests = yourMoves.filter(m => m.classification === 'best' || m.classification === 'excellent');
+  if (bests.length > 0) {
+    insights.push({ title: 'Highlights', body: `You found <strong>${bests.length}</strong> best or excellent move${bests.length>1?'s':''}, including <strong>${bests[0].san}</strong> on move ${bests[0].moveNum}. Well done!` });
+  }
+
+  // Accuracy insight
+  if (yourAcc < botAcc) {
+    insights.push({ title: 'vs. Bot', body: `The bot was <strong>${botAcc - yourAcc}%</strong> more accurate this game. Try playing at a lower ELO to build confidence.` });
+  } else {
+    insights.push({ title: 'vs. Bot', body: `You outplayed the bot by <strong>${yourAcc - botAcc}%</strong> accuracy. Consider raising the difficulty!` });
+  }
+
+  // Tip based on most common mistake type
+  const mistakeTypes = ['blunder','mistake','inaccuracy'];
+  const dominantMistake = mistakeTypes.find(t => count(yourMoves, t) > 0);
+  const tips = {
+    blunder: 'Tip: Before each move, ask yourself — can my opponent take anything for free?',
+    mistake: 'Tip: Try to look 2 moves ahead. Visualise your opponent\'s best reply before moving.',
+    inaccuracy: 'Tip: You\'re playing well overall. To cut inaccuracies, spend more time on positional ideas.',
+  };
+  if (dominantMistake) insights.push({ title: 'Study Tip', body: tips[dominantMistake] });
+
+  const cardsEl = document.getElementById('insight-cards');
+  cardsEl.innerHTML = insights.map(ins => `
+    <div class="insight-card">
+      <div class="ic-title">${ins.title}</div>
+      <div class="ic-body">${ins.body}</div>
+    </div>
+  `).join('');
+}
+
+function closeAnalysis() {
+  document.getElementById('analysis-panel').classList.remove('show');
+}
+
+// ── Opening Detection ─────────────────────────────────────────────────────────
+// Compact opening book: key = space-joined SAN moves, value = [eco, name, variation]
+const OPENING_BOOK = {
+  // === e4 openings ===
+  'e4':                                         ['B00','King\'s Pawn',''],
+  'e4 e5':                                      ['C20','Open Game',''],
+  'e4 e5 Nf3':                                  ['C40','King\'s Knight Opening',''],
+  'e4 e5 Nf3 Nc6':                              ['C44','King\'s Knight Opening',''],
+  'e4 e5 Nf3 Nc6 Bb5':                          ['C60','Ruy López',''],
+  'e4 e5 Nf3 Nc6 Bb5 a6':                       ['C65','Ruy López','Morphy Defense'],
+  'e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O': ['C84','Ruy López','Closed'],
+  'e4 e5 Nf3 Nc6 Bc4':                          ['C50','Italian Game',''],
+  'e4 e5 Nf3 Nc6 Bc4 Bc5':                      ['C51','Italian Game','Giuoco Piano'],
+  'e4 e5 Nf3 Nc6 Bc4 Bc5 c3':                   ['C54','Italian Game','Giuoco Pianissimo'],
+  'e4 e5 Nf3 Nc6 Bc4 Nf6':                      ['C55','Italian Game','Two Knights Defense'],
+  'e4 e5 Nf3 Nc6 d4':                           ['C44','Scotch Game',''],
+  'e4 e5 Nf3 Nc6 d4 exd4 Nxd4':                 ['C45','Scotch Game',''],
+  'e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nxc6':       ['C45','Scotch Game','Mieses Variation'],
+  'e4 e5 Nf3 f5':                                ['C30','King\'s Gambit Declined',''],
+  'e4 e5 f4':                                    ['C30','King\'s Gambit',''],
+  'e4 e5 f4 exf4':                               ['C33','King\'s Gambit Accepted',''],
+  'e4 e5 f4 exf4 Nf3':                           ['C34','King\'s Gambit Accepted',''],
+  'e4 e5 Nc3':                                   ['C25','Vienna Game',''],
+  'e4 e5 Nc3 Nc6':                               ['C25','Vienna Game',''],
+  'e4 e5 Nc3 Nf6':                               ['C26','Vienna Game','Falkbeer Variation'],
+  'e4 e6':                                       ['C00','French Defense',''],
+  'e4 e6 d4':                                    ['C00','French Defense',''],
+  'e4 e6 d4 d5':                                 ['C01','French Defense','Exchange Variation'],
+  'e4 e6 d4 d5 Nc3':                             ['C10','French Defense',''],
+  'e4 e6 d4 d5 Nc3 Nf6':                         ['C11','French Defense','Classical'],
+  'e4 e6 d4 d5 Nc3 Bb4':                         ['C15','French Defense','Winawer Variation'],
+  'e4 e6 d4 d5 e5':                              ['C02','French Defense','Advance Variation'],
+  'e4 e6 d4 d5 exd5':                            ['C01','French Defense','Exchange Variation'],
+  'e4 c5':                                       ['B20','Sicilian Defense',''],
+  'e4 c5 Nf3':                                   ['B40','Sicilian Defense',''],
+  'e4 c5 Nf3 d6':                                ['B50','Sicilian Defense',''],
+  'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6':       ['B70','Sicilian Defense','Dragon Variation'],
+  'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6':       ['B90','Sicilian Defense','Najdorf Variation'],
+  'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6':       ['B80','Sicilian Defense','Scheveningen'],
+  'e4 c5 Nf3 Nc6':                               ['B40','Sicilian Defense',''],
+  'e4 c5 Nf3 Nc6 d4 cxd4 Nxd4':                 ['B40','Sicilian Defense','Open'],
+  'e4 c5 Nf3 e6':                                ['B40','Sicilian Defense',''],
+  'e4 c5 c3':                                    ['B22','Sicilian Defense','Alapin Variation'],
+  'e4 c5 Nc3':                                   ['B23','Sicilian Defense','Closed'],
+  'e4 c6':                                       ['B10','Caro-Kann Defense',''],
+  'e4 c6 d4 d5':                                 ['B12','Caro-Kann Defense',''],
+  'e4 c6 d4 d5 Nc3':                             ['B15','Caro-Kann Defense',''],
+  'e4 c6 d4 d5 exd5 cxd5 c4':                   ['B13','Caro-Kann Defense','Panov Attack'],
+  'e4 c6 d4 d5 e5':                              ['B12','Caro-Kann Defense','Advance Variation'],
+  'e4 d5':                                       ['B01','Scandinavian Defense',''],
+  'e4 d5 exd5 Qxd5':                             ['B01','Scandinavian Defense','Mieses-Kotroc'],
+  'e4 d5 exd5 Nf6':                              ['B01','Scandinavian Defense','Icelandic Gambit'],
+  'e4 Nf6':                                      ['B02','Alekhine\'s Defense',''],
+  'e4 Nf6 e5 Nd5':                               ['B03','Alekhine\'s Defense',''],
+  'e4 g6':                                       ['B06','Modern Defense',''],
+  'e4 g6 d4 Bg7':                                ['B06','Modern Defense',''],
+  'e4 d6':                                       ['B07','Pirc Defense',''],
+  'e4 d6 d4 Nf6 Nc3 g6':                         ['B07','Pirc Defense',''],
+
+  // === d4 openings ===
+  'd4':                                          ['A40','Queen\'s Pawn',''],
+  'd4 d5':                                       ['D00','Queen\'s Pawn Game',''],
+  'd4 d5 c4':                                    ['D06','Queen\'s Gambit',''],
+  'd4 d5 c4 dxc4':                               ['D20','Queen\'s Gambit Accepted',''],
+  'd4 d5 c4 e6':                                 ['D30','Queen\'s Gambit Declined',''],
+  'd4 d5 c4 e6 Nc3 Nf6 Bg5':                     ['D55','Queen\'s Gambit Declined','Orthodox'],
+  'd4 d5 c4 c6':                                 ['D10','Slav Defense',''],
+  'd4 d5 c4 c6 Nf3 Nf6':                         ['D11','Slav Defense',''],
+  'd4 d5 c4 c6 Nc3 Nf6 Nf3':                     ['D46','Semi-Slav Defense',''],
+  'd4 d5 Nf3 Nf6 c4':                            ['D37','Queen\'s Gambit',''],
+  'd4 Nf6':                                      ['A45','Indian Defense',''],
+  'd4 Nf6 c4':                                   ['A50','Indian Defense',''],
+  'd4 Nf6 c4 g6':                                ['A54','Old Indian Defense',''],
+  'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6':                  ['E60','King\'s Indian Defense',''],
+  'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2':      ['E61','King\'s Indian Defense','Classical'],
+  'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3':               ['E70','King\'s Indian Defense','Sämisch'],
+  'd4 Nf6 c4 e6':                                ['A15','English Opening',''],
+  'd4 Nf6 c4 e6 Nf3':                            ['D35','Queen\'s Gambit Declined',''],
+  'd4 Nf6 c4 e6 Nc3 Bb4':                        ['E20','Nimzo-Indian Defense',''],
+  'd4 Nf6 c4 e6 Nc3 Bb4 e3':                     ['E40','Nimzo-Indian Defense','Rubinstein'],
+  'd4 Nf6 c4 e6 Nc3 Bb4 Qc2':                    ['E38','Nimzo-Indian Defense','Classical'],
+  'd4 Nf6 c4 e6 Nf3 b6':                         ['E15','Queen\'s Indian Defense',''],
+  'd4 Nf6 c4 e6 Nf3 d5 Nc3 Be7':                 ['D37','Queen\'s Gambit Declined','Exchange'],
+  'd4 Nf6 Nf3 g6 c4 Bg7 Nc3':                    ['A57','King\'s Indian Defense',''],
+  'd4 e6':                                       ['A40','Queen\'s Pawn',''],
+  'd4 f5':                                       ['A80','Dutch Defense',''],
+  'd4 f5 c4 Nf6 Nc3 e6':                         ['A90','Dutch Defense','Classical'],
+  'd4 f5 Nf3 Nf6 g3 e6 Bg2':                     ['A88','Dutch Defense','Leningrad'],
+
+  // === c4 / English ===
+  'c4':                                          ['A10','English Opening',''],
+  'c4 e5':                                       ['A20','English Opening',''],
+  'c4 e5 Nc3':                                   ['A21','English Opening',''],
+  'c4 e5 Nf3 Nc6':                               ['A22','English Opening',''],
+  'c4 c5':                                       ['A30','English Opening','Symmetrical'],
+  'c4 Nf6 Nc3 d5':                               ['A15','English Opening',''],
+
+  // === Nf3 / Réti ===
+  'Nf3':                                         ['A04','Réti Opening',''],
+  'Nf3 d5':                                      ['A06','Réti Opening',''],
+  'Nf3 d5 g3':                                   ['A07','King\'s Indian Attack',''],
+  'Nf3 Nf6':                                     ['A05','Réti Opening',''],
+  'Nf3 d5 c4':                                   ['A09','Réti Opening',''],
+
+  // === Other first moves ===
+  'b3':                                          ['A01','Nimzo-Larsen Attack',''],
+  'b4':                                          ['A00','Polish Opening',''],
+  'f4':                                          ['A02','Bird\'s Opening',''],
+  'g3':                                          ['A00','King\'s Fianchetto',''],
+  'g4':                                          ['A00','Grob\'s Attack',''],
+  'a3':                                          ['A00','Anderssen\'s Opening',''],
+};
+
+let lastOpeningKey = null;
+let openingFadeTimer = null;
+
+function detectOpening() {
+  const history = chess.history();
+  if (!history.length) {
+    hideOpeningBanner();
+    return;
+  }
+
+  // Try longest match first, walking back
+  for (let len = Math.min(history.length, 16); len >= 1; len--) {
+    const key = history.slice(0, len).join(' ');
+    if (OPENING_BOOK[key]) {
+      const [eco, name, variation] = OPENING_BOOK[key];
+      // Only update if changed
+      if (key !== lastOpeningKey) {
+        lastOpeningKey = key;
+        showOpeningBanner(eco, name, variation);
+      }
+      return;
+    }
+  }
+}
+
+function showOpeningBanner(eco, name, variation) {
+  const banner = document.getElementById('opening-banner');
+  document.getElementById('ob-eco').textContent = eco;
+  document.getElementById('ob-name').textContent = name;
+  document.getElementById('ob-variation').textContent = variation ? '· ' + variation : '';
+  banner.classList.remove('fading');
+  banner.classList.add('visible');
+
+  // Auto-fade after 25 moves (openings are usually over)
+  if (chess.history().length > 25) {
+    clearTimeout(openingFadeTimer);
+    openingFadeTimer = setTimeout(hideOpeningBanner, 4000);
+  }
+}
+
+function hideOpeningBanner() {
+  const banner = document.getElementById('opening-banner');
+  banner.classList.add('fading');
+  setTimeout(() => {
+    banner.classList.remove('visible', 'fading');
+    lastOpeningKey = null;
+  }, 350);
+}
+
+buildEloButtons();
+buildStyleButtons();
+renderLabels();
+renderBoard();
+setStatus('Your move');
+</script>
+</body>
+</html>
